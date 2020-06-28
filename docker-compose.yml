@@ -1,0 +1,83 @@
+version: '3.3'
+services:
+  traefik:
+    image: traefik:v2.2.1
+    restart: always
+    command:
+      - --api.insecure=true
+      - --entrypoints.insecure.address=:80
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --log=true
+      - --log.level=DEBUG
+      - --log.format="json"
+      - --accessLog.format="json"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.traefik.rule=Host(`traefik`)'
+      - 'traefik.http.routers.traefik.service=api@internal'
+      - 'traefik.http.routers.traefik.entrypoints=insecure'
+    ports:
+      - '80:80'
+      - 28080:8080
+
+  jhipster:
+    image: jhipster
+    environment:
+      - _JAVA_OPTIONS=-Xmx512m -Xms256m
+      - 'SPRING_PROFILES_ACTIVE=prod,swagger'
+      - MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED=true
+      - 'SPRING_DATASOURCE_URL=jdbc:postgresql://jhipster-postgresql:5432/jhipster'
+      - 'SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_ISSUER_URI=http://keycloak:9080/auth/realms/jhipster'
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_OIDC_CLIENT_ID=web_app
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_OIDC_CLIENT_SECRET=web_app
+      - JHIPSTER_SLEEP=0
+    # ports:
+    #   - '8080:8080'
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.jhipster.rule=Host(`localhost`)'
+      - 'traefik.http.routers.jhipster.service=jhipster@docker'
+      - 'traefik.http.routers.jhipster.entrypoints=insecure'
+      - 'traefik.http.services.jhipster.loadbalancer.server.port=8080'
+    deploy:
+      replicas: 2
+
+  jhipster-postgresql:
+    image: 'postgres:12.3'
+    environment:
+      - POSTGRES_USER=jhipster
+      - POSTGRES_PASSWORD=
+      - POSTGRES_HOST_AUTH_METHOD=trust
+
+  keycloak:
+    image: jboss/keycloak:10.0.1
+    command:
+      [
+        '-b',
+        '0.0.0.0',
+        '-Dkeycloak.migration.action=import',
+        '-Dkeycloak.migration.provider=dir',
+        '-Dkeycloak.migration.dir=/opt/jboss/keycloak/realm-config',
+        '-Dkeycloak.migration.strategy=OVERWRITE_EXISTING',
+        '-Djboss.socket.binding.port-offset=1000',
+        '-Dkeycloak.profile.feature.upload_scripts=enabled',
+      ]
+    volumes:
+      - ./realm-config:/opt/jboss/keycloak/realm-config
+    environment:
+      - KEYCLOAK_USER=admin
+      - KEYCLOAK_PASSWORD=admin
+      - DB_VENDOR=h2
+    ports:
+      - 9080:9080
+      - 9443:9443
+      - 10990:10990
+  # dns-local:
+  #   image: dvdarias/docker-hoster
+  #   restart: always
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - /etc/hosts:/tmp/hosts
